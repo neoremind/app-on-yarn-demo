@@ -1,33 +1,7 @@
 package com.neoremind.app.on.yarn.demo;
 
-import java.io.BufferedReader;
-import java.io.DataInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.StringReader;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.nio.ByteBuffer;
-import java.security.PrivilegedExceptionAction;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.Timer;
-import java.util.TimerTask;
-import java.util.Vector;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import com.google.common.base.Charsets;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Throwables;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
-import com.google.common.io.Files;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.GnuParser;
 import org.apache.commons.cli.HelpFormatter;
@@ -39,8 +13,6 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceAudience.Private;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.DataOutputBuffer;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.net.NetUtils;
@@ -67,19 +39,11 @@ import org.apache.hadoop.yarn.api.records.ContainerState;
 import org.apache.hadoop.yarn.api.records.ContainerStatus;
 import org.apache.hadoop.yarn.api.records.FinalApplicationStatus;
 import org.apache.hadoop.yarn.api.records.LocalResource;
-import org.apache.hadoop.yarn.api.records.LocalResourceType;
-import org.apache.hadoop.yarn.api.records.LocalResourceVisibility;
-import org.apache.hadoop.yarn.api.records.NodeId;
 import org.apache.hadoop.yarn.api.records.NodeReport;
 import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.api.records.ResourceRequest;
-import org.apache.hadoop.yarn.api.records.URL;
-import org.apache.hadoop.yarn.api.records.timeline.TimelineEntity;
-import org.apache.hadoop.yarn.api.records.timeline.TimelineEvent;
-import org.apache.hadoop.yarn.client.api.AMRMClient;
 import org.apache.hadoop.yarn.client.api.AMRMClient.ContainerRequest;
-import org.apache.hadoop.yarn.client.api.TimelineClient;
 import org.apache.hadoop.yarn.client.api.async.AMRMClientAsync;
 import org.apache.hadoop.yarn.client.api.async.NMClientAsync;
 import org.apache.hadoop.yarn.client.api.async.impl.NMClientAsyncImpl;
@@ -89,17 +53,32 @@ import org.apache.hadoop.yarn.security.AMRMTokenIdentifier;
 import org.apache.hadoop.yarn.util.ConverterUtils;
 import org.apache.log4j.LogManager;
 
-import com.google.common.annotations.VisibleForTesting;
+import java.io.BufferedReader;
+import java.io.DataInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.StringReader;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Vector;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * An ApplicationMaster for executing shell commands on a set of launched
  * containers using the YARN framework.
- *
+ * <p>
  * <p>
  * This class is meant to act as an example on how to write yarn-based
  * application masters.
  * </p>
- *
+ * <p>
  * <p>
  * The ApplicationMaster is started on a container by the
  * <code>ResourceManager</code>'s launcher. The first thing that the
@@ -111,14 +90,14 @@ import com.google.common.annotations.VisibleForTesting;
  * status/job history if needed. However, in the distributedshell, trackingurl
  * and appMasterHost:appMasterRpcPort are not supported.
  * </p>
- *
+ * <p>
  * <p>
  * The <code>ApplicationMaster</code> needs to send a heartbeat to the
  * <code>ResourceManager</code> at regular intervals to inform the
  * <code>ResourceManager</code> that it is up and alive. The
  * {@link ApplicationMasterProtocol#allocate} to the <code>ResourceManager</code> from the
  * <code>ApplicationMaster</code> acts as a heartbeat.
- *
+ * <p>
  * <p>
  * For the actual handling of the job, the <code>ApplicationMaster</code> has to
  * request the <code>ResourceManager</code> via {@link AllocateRequest} for the
@@ -129,7 +108,7 @@ import com.google.common.annotations.VisibleForTesting;
  * <code>ApplicationMaster</code> of the set of newly allocated containers,
  * completed containers as well as current state of available resources.
  * </p>
- *
+ * <p>
  * <p>
  * For each allocated container, the <code>ApplicationMaster</code> can then set
  * up the necessary launch context via {@link ContainerLaunchContext} to specify
@@ -138,14 +117,14 @@ import com.google.common.annotations.VisibleForTesting;
  * submit a {@link StartContainerRequest} to the {@link ContainerManagementProtocol} to
  * launch and execute the defined commands on the given allocated container.
  * </p>
- *
+ * <p>
  * <p>
  * The <code>ApplicationMaster</code> can monitor the launched container by
  * either querying the <code>ResourceManager</code> using
  * {@link ApplicationMasterProtocol#allocate} to get updates on completed containers or via
  * the {@link ContainerManagementProtocol} by querying for the status of the allocated
  * container's {@link ContainerId}.
- *
+ * <p>
  * <p>
  * After the job has been completed, the <code>ApplicationMaster</code> has to
  * send a {@link FinishApplicationMasterRequest} to the
@@ -259,7 +238,9 @@ public class ApplicationMaster {
     private final String linux_bash_command = "bash";
     private final String windows_command = "cmd /c";
 
-    private NestoYarnHttpServer httpServer;
+    private ConcurrentHashMap<ContainerId, Container> runningContainers = new ConcurrentHashMap<>();
+
+    private YarnAppMasterHttpServer httpServer;
 
     public static final int DEFAULT_APP_MASTER_TRACKING_URL_PORT = 8090;
 
@@ -500,7 +481,7 @@ public class ApplicationMaster {
      * @throws YarnException
      * @throws IOException
      */
-    @SuppressWarnings({ "unchecked" })
+    @SuppressWarnings({"unchecked"})
     public void run() throws YarnException, IOException {
         LOG.info("Starting ApplicationMaster");
 
@@ -539,7 +520,7 @@ public class ApplicationMaster {
         nmClientAsync.init(conf);
         nmClientAsync.start();
 
-        httpServer = new NestoYarnHttpServer();
+        httpServer = new YarnAppMasterHttpServer(this);
         httpServer.start("AppMaster HTTP server", DEFAULT_APP_MASTER_TRACKING_URL_PORT);
 
         appMasterHostname = NetUtils.getHostname();
@@ -594,19 +575,18 @@ public class ApplicationMaster {
                 + " previous attempts' running containers on AM registration.");
         numAllocatedContainers.addAndGet(previousAMRunningContainers.size());
 
+        recoverExecutors(previousAMRunningContainers);
+
         int numTotalContainersToRequest =
                 numTotalContainers - previousAMRunningContainers.size();
+
         // Setup ask for containers from RM
         // Send request for containers to RM
         // Until we get our fully allocated quota, we keep on polling RM for
         // containers
         // Keep looping until all the containers are launched and shell script
         // executed on them ( regardless of success/failure).
-        for (int i = 0; i < numTotalContainersToRequest; ++i) {
-            ContainerRequest containerAsk = setupContainerAskForRM();
-            amRMClient.addContainerRequest(containerAsk);
-        }
-        numRequestedContainers.set(numTotalContainers);
+        requestKContainers(numTotalContainersToRequest);
     }
 
     @VisibleForTesting
@@ -617,11 +597,11 @@ public class ApplicationMaster {
     @VisibleForTesting
     protected boolean finish() {
         // wait for completion.
-        while (!done
-                && (numCompletedContainers.get() != numTotalContainers)) {
+        while (!done) {
             try {
-                Thread.sleep(200);
-            } catch (InterruptedException ex) {}
+                Thread.sleep(1000);
+            } catch (InterruptedException ex) {
+            }
         }
 
         // Join all launched threads
@@ -713,38 +693,32 @@ public class ApplicationMaster {
                     LOG.info("Container completed successfully." + ", containerId="
                             + containerStatus.getContainerId());
                 }
+                runningContainers.remove(containerStatus.getContainerId());
             }
 
             // ask for more containers if any failed
-            int askCount = numTotalContainers - numRequestedContainers.get();
-            numRequestedContainers.addAndGet(askCount);
-
-            if (askCount > 0) {
-                for (int i = 0; i < askCount; ++i) {
-                    ContainerRequest containerAsk = setupContainerAskForRM();
-                    amRMClient.addContainerRequest(containerAsk);
-                }
-            }
-
-            if (numCompletedContainers.get() == numTotalContainers) {
-                done = true;
-            }
+            askMoreContainersIfNecessary();
         }
 
         @Override
         public void onContainersAllocated(List<Container> allocatedContainers) {
             LOG.info("Got response from RM for container ask, allocatedCnt="
                     + allocatedContainers.size());
+            // We are sleeping here because there might be multiple calls
+            // and we want to keep the number of containers as expected.
+            if (runningContainers.size() >= numTotalContainers) {
+                return;
+            }
             numAllocatedContainers.addAndGet(allocatedContainers.size());
             for (Container allocatedContainer : allocatedContainers) {
-                LOG.info("Launching shell command on a new container."
+                LOG.info("Launching shell command on a new container"
                         + ", containerId=" + allocatedContainer.getId()
                         + ", containerNode=" + allocatedContainer.getNodeId().getHost()
                         + ":" + allocatedContainer.getNodeId().getPort()
                         + ", containerNodeURI=" + allocatedContainer.getNodeHttpAddress()
-                        + ", containerResourceMemory"
+                        + ", containerResourceMemory="
                         + allocatedContainer.getResource().getMemory()
-                        + ", containerResourceVirtualCores"
+                        + ", containerResourceVirtualCores="
                         + allocatedContainer.getResource().getVirtualCores());
                 // + ", containerToken"
                 // +allocatedContainer.getContainerToken().getIdentifier().toString());
@@ -767,7 +741,8 @@ public class ApplicationMaster {
         }
 
         @Override
-        public void onNodesUpdated(List<NodeReport> updatedNodes) {}
+        public void onNodesUpdated(List<NodeReport> updatedNodes) {
+        }
 
         @Override
         public float getProgress() {
@@ -803,27 +778,22 @@ public class ApplicationMaster {
 
         @Override
         public void onContainerStopped(ContainerId containerId) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Succeeded to stop Container " + containerId);
-            }
+            LOG.info("Succeeded to stop Container " + containerId);
+            applicationMaster.runningContainers.remove(containerId);
             containers.remove(containerId);
         }
 
         @Override
         public void onContainerStatusReceived(ContainerId containerId,
                                               ContainerStatus containerStatus) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Container Status: id=" + containerId + ", status=" +
-                        containerStatus);
-            }
+            LOG.debug("Container Status: id=" + containerId + ", status=" +
+                    containerStatus);
         }
 
         @Override
         public void onContainerStarted(ContainerId containerId,
                                        Map<String, ByteBuffer> allServiceResponse) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Succeeded to start Container " + containerId);
-            }
+            LOG.debug("Succeeded to start Container " + containerId);
             Container container = containers.get(containerId);
             if (container != null) {
                 applicationMaster.nmClientAsync.getContainerStatusAsync(containerId, container.getNodeId());
@@ -834,6 +804,7 @@ public class ApplicationMaster {
         public void onStartContainerError(ContainerId containerId, Throwable t) {
             LOG.error("Failed to start Container " + containerId);
             containers.remove(containerId);
+            applicationMaster.runningContainers.remove(containerId);
             applicationMaster.numCompletedContainers.incrementAndGet();
             applicationMaster.numFailedContainers.incrementAndGet();
         }
@@ -847,6 +818,7 @@ public class ApplicationMaster {
         @Override
         public void onStopContainerError(ContainerId containerId, Throwable t) {
             LOG.error("Failed to stop Container " + containerId);
+            applicationMaster.runningContainers.remove(containerId);
             containers.remove(containerId);
         }
     }
@@ -863,7 +835,7 @@ public class ApplicationMaster {
         NMCallbackHandler containerListener;
 
         /**
-         * @param lcontainer Allocated container
+         * @param lcontainer        Allocated container
          * @param containerListener Callback handler of the container
          */
         public LaunchContainerRunnable(
@@ -883,19 +855,19 @@ public class ApplicationMaster {
                     + container.getId());
 
             Map<String, String> currentEnvs = System.getenv();
-            if (!currentEnvs.containsKey(NestoYarnConstants.NESTO_YARN_FRAMEWORK_PATH)) {
-                throw new RuntimeException(NestoYarnConstants.NESTO_YARN_FRAMEWORK_PATH
+            if (!currentEnvs.containsKey(Constants.JAR_FILE_PATH)) {
+                throw new RuntimeException(Constants.JAR_FILE_PATH
                         + " not set in the environment.");
             }
-            String frameworkPath = currentEnvs.get(NestoYarnConstants.NESTO_YARN_FRAMEWORK_PATH);
+            String frameworkPath = currentEnvs.get(Constants.JAR_FILE_PATH);
 
-            shellEnv.put("CLASSPATH", NestoYarnHelper.buildClassPathEnv(conf));
+            shellEnv.put("CLASSPATH", YarnHelper.buildClassPathEnv(conf));
 
             // Set the local resources
             Map<String, LocalResource> localResources = new HashMap<>(4);
 
             try {
-                NestoYarnHelper.addFrameworkToDistributedCache(frameworkPath, localResources, conf);
+                YarnHelper.addFrameworkToDistributedCache(frameworkPath, localResources, conf);
             } catch (IOException e) {
                 Throwables.propagate(e);
             }
@@ -904,16 +876,6 @@ public class ApplicationMaster {
             Vector<CharSequence> vargs = new Vector<CharSequence>(10);
 
             // Set java executable command
-            LOG.info("Setting up shell command on " + container.getNodeId().getHost());
-//            try {
-//                String log4jContents = Files.toString(new File(NestoYarnHelper.getAppContainerLog4jFile()),
-//                        Charsets.UTF_8);
-//                vargs.add("echo '" + log4jContents + "' >$PWD/" + NestoYarnConstants.NESTO_YARN_APPCONTAINER_LOG4J);
-//                vargs.add(" && ");
-//            } catch (Exception e) {
-//                throw new RuntimeException("log4j file not existed:" + NestoYarnHelper.getAppContainerLog4jFile());
-//            }
-
             vargs.add(ApplicationConstants.Environment.JAVA_HOME.$$() + "/bin/java");
             // Set am memory size
             vargs.add("-Xms" + containerMemory + "m");
@@ -923,10 +885,10 @@ public class ApplicationMaster {
             vargs.add("-Djava.io.tmpdir=$PWD/tmp");
 
             // Set log4j configuration file
-            // vargs.add("-Dlog4j.configuration=" + NestoYarnConstants.NESTO_YARN_APPCONTAINER_LOG4J);
+            // vargs.add("-Dlog4j.configuration=" + Constants.NESTO_YARN_APPCONTAINER_LOG4J);
 
             // Set class name
-            vargs.add(NestoYarnConstants.NESTO_YARN_SERVER_MAINCLASS);
+            vargs.add(Constants.MAINCLASS);
 
             // Set args for the shell command if any
             vargs.add(shellArgs);
@@ -956,6 +918,7 @@ public class ApplicationMaster {
             // "hadoop dfs" command inside the distributed shell.
             ContainerLaunchContext ctx = ContainerLaunchContext.newInstance(
                     localResources, shellEnv, commands, null, allTokens.duplicate(), null);
+            runningContainers.putIfAbsent(container.getId(), container);
             containerListener.addContainer(container.getId(), container);
             nmClientAsync.startContainerAsync(container, ctx);
         }
@@ -982,6 +945,35 @@ public class ApplicationMaster {
                 pri);
         LOG.info("Requested container ask: " + request.toString());
         return request;
+    }
+
+    private void recoverExecutors(List<Container> previousAMRunningContainers) {
+        for (Container container : previousAMRunningContainers) {
+            runningContainers.putIfAbsent(container.getId(), container);
+        }
+    }
+
+    private void requestKContainers(int askCount) {
+        LOG.info("Request new containers count:" + askCount);
+        for (int i = 0; i < askCount; ++i) {
+            ContainerRequest containerAsk = setupContainerAskForRM();
+            amRMClient.addContainerRequest(containerAsk);
+        }
+        numRequestedContainers.set(numTotalContainers);
+    }
+
+    private synchronized void askMoreContainersIfNecessary() {
+        int askCount = numTotalContainers - runningContainers.size();
+        if (askCount > 0) {
+            LOG.info("Request more containers count:" + askCount);
+            requestKContainers(askCount);
+        } else {
+            LOG.info("No more to ask for containers");
+        }
+    }
+
+    public ConcurrentHashMap<ContainerId, Container> getRunningContainers() {
+        return runningContainers;
     }
 
     private boolean fileExist(String filePath) {

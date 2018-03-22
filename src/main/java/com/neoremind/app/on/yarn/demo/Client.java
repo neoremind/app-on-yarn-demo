@@ -461,7 +461,7 @@ public class Client {
         FileSystem fs = FileSystem.get(conf);
         addToLocalResources(fs, appMasterJar, appMasterJarPath, appId.toString(),
                 localResources, null);
-        NestoYarnHelper.addFrameworkToDistributedCache(appMasterJarInHDFS, localResources, conf);
+        YarnHelper.addFrameworkToDistributedCache(appMasterJarInHDFS, localResources, conf);
 
         // Set the log4j properties if needed
         if (!log4jPropFile.isEmpty()) {
@@ -508,8 +508,8 @@ public class Client {
         LOG.info("Set the environment for the application master");
         Map<String, String> env = new HashMap<String, String>();
 
-        env.put("CLASSPATH", NestoYarnHelper.buildClassPathEnv(conf));
-        env.put(NestoYarnConstants.NESTO_YARN_FRAMEWORK_PATH, appMasterJarInHDFS);
+        env.put("CLASSPATH", YarnHelper.buildClassPathEnv(conf));
+        env.put(Constants.JAR_FILE_PATH, appMasterJarInHDFS);
 
         // put location of shell script into env
         // using the env info, the application master will create the correct local resource for the

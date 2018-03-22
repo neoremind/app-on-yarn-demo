@@ -9,11 +9,12 @@ import org.apache.hadoop.security.token.TokenIdentifier;
 import java.security.PrivilegedAction;
 
 // An Executor to run nesto server in a yarn container
-public class NestoServerExecutor {
-    private static final Log LOG = LogFactory.getLog(NestoServerExecutor.class);
+public class SampleExecutor {
+
+    private static final Log LOG = LogFactory.getLog(SampleExecutor.class);
 
     public static void run(String[] args) throws Exception {
-        NestoYarnHttpServer httpServer = new NestoYarnHttpServer();
+        SampleHttpServer httpServer = new SampleHttpServer();
         httpServer.start("My App", 8190);
     }
 
@@ -42,7 +43,7 @@ public class NestoServerExecutor {
             @Override
             public Void run() {
                 try {
-                    NestoServerExecutor.run(args);
+                    SampleExecutor.run(args);
                 } catch (Exception e) {
                     e.printStackTrace();
                     System.exit(1);

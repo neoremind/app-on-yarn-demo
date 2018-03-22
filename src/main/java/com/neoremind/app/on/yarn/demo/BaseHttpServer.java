@@ -18,9 +18,9 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.BindException;
 
-public class NestoYarnHttpServer implements Closeable {
+public abstract class BaseHttpServer implements Closeable {
 
-    private static final Log LOG = LogFactory.getLog(NestoYarnHttpServer.class);
+    private static final Log LOG = LogFactory.getLog(BaseHttpServer.class);
 
     private Server server;
 
@@ -34,8 +34,7 @@ public class NestoYarnHttpServer implements Closeable {
                 server = new Server(port);
                 Context context = new Context();
                 context.setContextPath("/");
-                context.addServlet(new ServletHolder(new WelcomeServlet(name, System.currentTimeMillis())),
-                        "/");
+                context.addServlet(new ServletHolder(getIndexPageServlet(name)), "/");
                 context.addServlet(StackServlet.class, "/stack");
                 server.setHandler(context);
                 server.start();
@@ -58,11 +57,6 @@ public class NestoYarnHttpServer implements Closeable {
         return name;
     }
 
-    public static void main(String[] args) throws InterruptedException {
-        NestoYarnHttpServer server = new NestoYarnHttpServer();
-        server.start("Test server", 8390);
-    }
-
     @Override
     public void close() throws IOException {
         try {
@@ -72,29 +66,7 @@ public class NestoYarnHttpServer implements Closeable {
         }
     }
 
-    public static class WelcomeServlet extends HttpServlet {
-
-        private String name;
-
-        private long startTimeInMs;
-
-        public WelcomeServlet(String name, long startTimeInMs) {
-            this.name = name;
-            this.startTimeInMs = startTimeInMs;
-        }
-
-        @Override
-        public void doGet(HttpServletRequest request, HttpServletResponse response)
-                throws ServletException, IOException {
-            response.setContentType("text/html; charset=utf-8");
-            response.setStatus(HttpServletResponse.SC_OK);
-            try (PrintWriter out = response.getWriter()) {
-                out.println("<h2>" + name + "</h2>");
-                out.println(String.format("The server has started for %d secs",
-                        (System.currentTimeMillis() - startTimeInMs) / 1000));
-            }
-        }
-    }
+    public abstract HttpServlet getIndexPageServlet(String name);
 
     public static class StackServlet extends HttpServlet {
         @Override
