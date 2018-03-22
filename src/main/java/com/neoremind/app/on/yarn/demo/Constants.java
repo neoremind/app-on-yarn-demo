@@ -1,5 +1,8 @@
 package com.neoremind.app.on.yarn.demo;
 
+/**
+ * Constants
+ */
 public class Constants {
     public static final String MAINCLASS = "com.neoremind.app.on.yarn.demo.SampleExecutor";
 

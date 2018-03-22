@@ -18,6 +18,9 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.BindException;
 
+/**
+ * BaseHttpServer
+ */
 public abstract class BaseHttpServer implements Closeable {
 
     private static final Log LOG = LogFactory.getLog(BaseHttpServer.class);
@@ -68,12 +71,15 @@ public abstract class BaseHttpServer implements Closeable {
 
     public abstract HttpServlet getIndexPageServlet(String name);
 
+    /**
+     * StackServlet
+     */
     public static class StackServlet extends HttpServlet {
         @Override
         public void doGet(HttpServletRequest request, HttpServletResponse response)
                 throws ServletException, IOException {
-            try (PrintWriter out = new PrintWriter
-                    (HtmlQuoting.quoteOutputStream(response.getOutputStream()))) {
+            try (PrintWriter out = new PrintWriter(
+                    HtmlQuoting.quoteOutputStream(response.getOutputStream()))) {
                 ReflectionUtils.printThreadInfo(out, "");
                 out.close();
             }

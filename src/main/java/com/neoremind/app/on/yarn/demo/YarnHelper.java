@@ -17,6 +17,9 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Map;
 
+/**
+ * YarnHelper
+ */
 public class YarnHelper {
 
     public static String buildClassPathEnv(Configuration conf) {
@@ -41,13 +44,14 @@ public class YarnHelper {
         return classPathEnv.toString();
     }
 
-    public static void addFrameworkToDistributedCache(String framework_path,
-                                                      Map<String, LocalResource> localResources, Configuration conf) throws IOException {
+    public static void addFrameworkToDistributedCache(String javaPathInHdfs,
+                                                      Map<String, LocalResource> localResources,
+                                                      Configuration conf) throws IOException {
         URI uri;
         try {
-            uri = new URI(framework_path);
+            uri = new URI(javaPathInHdfs);
         } catch (URISyntaxException e) {
-            throw new IllegalArgumentException("Unable to parse '" + framework_path
+            throw new IllegalArgumentException("Unable to parse '" + javaPathInHdfs
                     + "' as a URI.");
         }
 

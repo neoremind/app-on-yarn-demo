@@ -11,8 +11,6 @@ import org.slf4j.LoggerFactory;
 /**
  * ClassName: NetworkUtils <br/>
  * Function: 网络工具类
- *
- * @author Zhang Xu
  */
 public class NetworkUtils {
 
@@ -24,7 +22,7 @@ public class NetworkUtils {
 
     public static final String ANYHOST = "0.0.0.0";
 
-    private static volatile InetAddress LOCAL_ADDRESS = null;
+    private static volatile InetAddress local = null;
 
     private static final Pattern IP_PATTERN = Pattern.compile("\\d{1,3}(\\.\\d{1,3}){3,5}$");
 
@@ -88,11 +86,11 @@ public class NetworkUtils {
     }
 
     public static InetAddress getLocalAddress() {
-        if (LOCAL_ADDRESS != null) {
-            return LOCAL_ADDRESS;
+        if (local != null) {
+            return local;
         }
         InetAddress localAddress = getLocalAddress0();
-        LOCAL_ADDRESS = localAddress;
+        local = localAddress;
         return localAddress;
     }
 

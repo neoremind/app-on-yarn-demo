@@ -7,8 +7,14 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.PrintWriter;
 
+/**
+ * SampleHttpServer
+ */
 public class SampleHttpServer extends BaseHttpServer {
 
+    /**
+     * WelcomeServlet
+     */
     public static class WelcomeServlet extends HttpServlet {
 
         private String name;

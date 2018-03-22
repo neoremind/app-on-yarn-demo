@@ -27,7 +27,9 @@ import java.io.InputStream;
 import java.util.Map.Entry;
 import java.util.Properties;
 
-
+/**
+ * Log4jPropertyHelper
+ */
 public class Log4jPropertyHelper {
 
     public static void updateLog4jConfiguration(Class<?> targetClass,

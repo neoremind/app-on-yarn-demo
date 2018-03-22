@@ -26,7 +26,6 @@ import org.apache.hadoop.yarn.api.ApplicationMasterProtocol;
 import org.apache.hadoop.yarn.api.ContainerManagementProtocol;
 import org.apache.hadoop.yarn.api.protocolrecords.AllocateRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.AllocateResponse;
-import org.apache.hadoop.yarn.api.protocolrecords.FinishApplicationMasterRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.RegisterApplicationMasterResponse;
 import org.apache.hadoop.yarn.api.protocolrecords.StartContainerRequest;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
@@ -70,7 +69,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * An ApplicationMaster for executing shell commands on a set of launched
+ * An ApplicationMaster for executing customized application on a set of launched
  * containers using the YARN framework.
  * <p>
  * <p>
@@ -86,8 +85,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * within the <code>ResourceManager</code> regarding what host:port the
  * ApplicationMaster is listening on to provide any form of functionality to a
  * client as well as a tracking url that a client can use to keep track of
- * status/job history if needed. However, in the distributedshell, trackingurl
- * and appMasterHost:appMasterRpcPort are not supported.
+ * status/job history if needed.
  * </p>
  * <p>
  * <p>
@@ -116,19 +114,6 @@ import java.util.concurrent.atomic.AtomicInteger;
  * submit a {@link StartContainerRequest} to the {@link ContainerManagementProtocol} to
  * launch and execute the defined commands on the given allocated container.
  * </p>
- * <p>
- * <p>
- * The <code>ApplicationMaster</code> can monitor the launched container by
- * either querying the <code>ResourceManager</code> using
- * {@link ApplicationMasterProtocol#allocate} to get updates on completed containers or via
- * the {@link ContainerManagementProtocol} by querying for the status of the allocated
- * container's {@link ContainerId}.
- * <p>
- * <p>
- * After the job has been completed, the <code>ApplicationMaster</code> has to
- * send a {@link FinishApplicationMasterRequest} to the
- * <code>ResourceManager</code> to inform it that the
- * <code>ApplicationMaster</code> has been completed.
  */
 @InterfaceAudience.Public
 @InterfaceStability.Unstable
@@ -198,10 +183,10 @@ public class ApplicationMaster {
     private Map<String, String> shellEnv = new HashMap<String, String>();
 
     // Hardcoded path to custom log_properties
-    private static final String log4jPath = "log4j.properties";
+    private static final String LOG_4_J_PATH = "log4j.properties";
 
-    private static final String shellArgsPath = "shellArgs";
-    private static final String javaOptsPath = "javaOpts";
+    private static final String SHELL_ARGS_PATH = "shellArgs";
+    private static final String JAVA_OPTS_PATH = "javaOpts";
 
     private volatile boolean done;
 
@@ -219,9 +204,6 @@ public class ApplicationMaster {
     // Container memory overhead in MB
     private int memoryOverhead = 384;
 
-    /**
-     * @param args Command line args
-     */
     public static void main(String[] args) {
         boolean result = false;
         try {
@@ -261,8 +243,8 @@ public class ApplicationMaster {
 
         BufferedReader buf = null;
         try {
-            String lines = Shell.WINDOWS ? Shell.execCommand("cmd", "/c", "dir") :
-                    Shell.execCommand("ls", "-al");
+            String lines = Shell.WINDOWS ? Shell.execCommand("cmd", "/c", "dir")
+                    : Shell.execCommand("ls", "-al");
             buf = new BufferedReader(new StringReader(lines));
             String line;
             while ((line = buf.readLine()) != null) {
@@ -317,10 +299,10 @@ public class ApplicationMaster {
         }
 
         //Check whether customer log4j.properties file exists
-        if (fileExist(log4jPath)) {
+        if (fileExist(LOG_4_J_PATH)) {
             try {
                 Log4jPropertyHelper.updateLog4jConfiguration(ApplicationMaster.class,
-                        log4jPath);
+                        LOG_4_J_PATH);
             } catch (Exception e) {
                 LOG.warn("Can not set up custom log4j properties. " + e);
             }
@@ -373,16 +355,16 @@ public class ApplicationMaster {
                 + appAttemptID.getApplicationId().getClusterTimestamp()
                 + ", attemptId=" + appAttemptID.getAttemptId());
 
-        if (fileExist(shellArgsPath)) {
-            shellArgs = readContent(shellArgsPath);
+        if (fileExist(SHELL_ARGS_PATH)) {
+            shellArgs = readContent(SHELL_ARGS_PATH);
         }
 
-        if (fileExist(javaOptsPath)) {
-            javaOpts = readContent(javaOptsPath);
+        if (fileExist(JAVA_OPTS_PATH)) {
+            javaOpts = readContent(JAVA_OPTS_PATH);
         }
 
         if (cliParser.hasOption("shell_env")) {
-            String shellEnvs[] = cliParser.getOptionValues("shell_env");
+            String[] shellEnvs = cliParser.getOptionValues("shell_env");
             for (String env : shellEnvs) {
                 env = env.trim();
                 int index = env.indexOf('=');
@@ -582,8 +564,8 @@ public class ApplicationMaster {
         FinalApplicationStatus appStatus;
         String appMessage = null;
         boolean success = true;
-        if (numFailedContainers.get() == 0 &&
-                numCompletedContainers.get() == numTotalContainers) {
+        if (numFailedContainers.get() == 0
+                && numCompletedContainers.get() == numTotalContainers) {
             appStatus = FinalApplicationStatus.SUCCEEDED;
         } else {
             appStatus = FinalApplicationStatus.FAILED;
@@ -608,6 +590,9 @@ public class ApplicationMaster {
         return success;
     }
 
+    /**
+     * RMCallbackHandler
+     */
     private class RMCallbackHandler implements AMRMClientAsync.CallbackHandler {
         @SuppressWarnings("unchecked")
         @Override
@@ -715,7 +700,9 @@ public class ApplicationMaster {
         }
     }
 
-    @VisibleForTesting
+    /**
+     * NMCallbackHandler
+     */
     static class NMCallbackHandler
             implements NMClientAsync.CallbackHandler {
 
@@ -723,11 +710,11 @@ public class ApplicationMaster {
                 new ConcurrentHashMap<ContainerId, Container>();
         private final ApplicationMaster applicationMaster;
 
-        public NMCallbackHandler(ApplicationMaster applicationMaster) {
+        NMCallbackHandler(ApplicationMaster applicationMaster) {
             this.applicationMaster = applicationMaster;
         }
 
-        public void addContainer(ContainerId containerId, Container container) {
+        void addContainer(ContainerId containerId, Container container) {
             containers.putIfAbsent(containerId, container);
         }
 
@@ -741,8 +728,8 @@ public class ApplicationMaster {
         @Override
         public void onContainerStatusReceived(ContainerId containerId,
                                               ContainerStatus containerStatus) {
-            LOG.debug("Container Status: id=" + containerId + ", status=" +
-                    containerStatus);
+            LOG.debug("Container Status: id=" + containerId + ", status="
+                    + containerStatus);
         }
 
         @Override
@@ -793,7 +780,7 @@ public class ApplicationMaster {
          * @param lcontainer        Allocated container
          * @param containerListener Callback handler of the container
          */
-        public LaunchContainerRunnable(
+        LaunchContainerRunnable(
                 Container lcontainer, NMCallbackHandler containerListener) {
             this.container = lcontainer;
             this.containerListener = containerListener;

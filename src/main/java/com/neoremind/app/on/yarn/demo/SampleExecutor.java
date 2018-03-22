@@ -8,7 +8,9 @@ import org.apache.hadoop.security.token.TokenIdentifier;
 
 import java.security.PrivilegedAction;
 
-// An Executor to run nesto server in a yarn container
+/**
+ * Executor to run customized application in a yarn container
+ */
 public class SampleExecutor {
 
     private static final Log LOG = LogFactory.getLog(SampleExecutor.class);

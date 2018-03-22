@@ -147,11 +147,11 @@ public class Client {
     // Command line options
     private Options opts;
 
-    private static final String javaOptsPath = "javaOpts";
-    private static final String shellArgsPath = "shellArgs";
-    private static final String appMasterJarPath = "AppMaster.jar";
+    private static final String JAVA_OPTS_PATH = "javaOpts";
+    private static final String SHELL_ARGS_PATH = "shellArgs";
+    private static final String APP_MASTER_JAR_PATH = "AppMaster.jar";
     // Hardcoded path to custom log_properties
-    private static final String log4jPath = "log4j.properties";
+    private static final String LOG_4_J_PATH = "log4j.properties";
 
     private int memoryOverhead = 384;
 
@@ -214,8 +214,8 @@ public class Client {
         opts.addOption("memory_overhead", true, "Amount of memory overhead in MB for application master and container");
         opts.addOption("jar_path", true, "Jar file containing the application master in local file system");
         opts.addOption("jar_path_in_hdfs", true, "Jar file containing the application master in HDFS");
-        opts.addOption("shell_args", true, "Command line args for the shell script." +
-                "Multiple args can be separated by empty space.");
+        opts.addOption("shell_args", true, "Command line args for the shell script."
+                + "Multiple args can be separated by empty space.");
         opts.addOption("java_opts", true, "Java opts for container");
         opts.getOption("shell_args").setArgs(Option.UNLIMITED_VALUES);
         opts.addOption("shell_env", true, "Environment for shell script. Specified as env_key=env_val pairs");
@@ -224,10 +224,10 @@ public class Client {
         opts.addOption("num_containers", true, "No. of containers on which the shell command needs to be executed");
         opts.addOption("log_properties", true, "log4j.properties file");
         opts.addOption("keep_containers_across_application_attempts", false,
-                "Flag to indicate whether to keep containers across application attempts." +
-                        " If the flag is true, running containers will not be killed when" +
-                        " application attempt fails and these containers will be retrieved by" +
-                        " the new application attempt ");
+                "Flag to indicate whether to keep containers across application attempts."
+                        + " If the flag is true, running containers will not be killed when"
+                        + " application attempt fails and these containers will be retrieved by"
+                        + " the new application attempt ");
         opts.addOption("debug", false, "Dump out debug information");
         opts.addOption("help", false, "Print usage");
     }
@@ -317,7 +317,7 @@ public class Client {
             javaOpts = cliParser.getOptionValues("java_opts");
         }
         if (cliParser.hasOption("shell_env")) {
-            String envs[] = cliParser.getOptionValues("shell_env");
+            String[] envs = cliParser.getOptionValues("shell_env");
             for (String env : envs) {
                 env = env.trim();
                 int index = env.indexOf('=');
@@ -447,23 +447,23 @@ public class Client {
         // Copy the application master jar to the filesystem
         // Create a local resource to point to the destination jar path
         FileSystem fs = FileSystem.get(conf);
-        addToLocalResources(fs, appMasterJar, appMasterJarPath, appId.toString(),
+        addToLocalResources(fs, appMasterJar, APP_MASTER_JAR_PATH, appId.toString(),
                 localResources, null);
         YarnHelper.addFrameworkToDistributedCache(appMasterJarInHDFS, localResources, conf);
 
         // Set the log4j properties if needed
         if (!log4jPropFile.isEmpty()) {
-            addToLocalResources(fs, log4jPropFile, log4jPath, appId.toString(),
+            addToLocalResources(fs, log4jPropFile, LOG_4_J_PATH, appId.toString(),
                     localResources, null);
         }
 
         if (shellArgs.length > 0) {
-            addToLocalResources(fs, null, shellArgsPath, appId.toString(),
+            addToLocalResources(fs, null, SHELL_ARGS_PATH, appId.toString(),
                     localResources, StringUtils.join(shellArgs, " "));
         }
 
         if (javaOpts.length > 0) {
-            addToLocalResources(fs, null, javaOptsPath, appId.toString(),
+            addToLocalResources(fs, null, JAVA_OPTS_PATH, appId.toString(),
                     localResources, StringUtils.join(javaOpts, " "));
         }
 
@@ -564,7 +564,7 @@ public class Client {
             }
 
             // For now, only getting tokens for the default file-system.
-            final Token<?> tokens[] =
+            final Token<?>[] tokens =
                     fs.addDelegationTokens(tokenRenewer, credentials);
             if (tokens != null) {
                 for (Token<?> token : tokens) {
