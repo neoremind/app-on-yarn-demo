@@ -418,7 +418,7 @@ public class NestoYarnAppMaster {
         setupUpdateLivedNodesThread();
 
         httpServer = new NestoYarnHttpServer();
-        httpServer.start(8090);
+        httpServer.start("My server",8090);
 
         // Register self with ResourceManager
         // This will start heartbeating to the RM

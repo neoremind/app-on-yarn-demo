@@ -15,12 +15,18 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.Vector;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.google.common.base.Charsets;
+import com.google.common.base.Throwables;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import com.google.common.io.Files;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.GnuParser;
@@ -63,6 +69,7 @@ import org.apache.hadoop.yarn.api.records.FinalApplicationStatus;
 import org.apache.hadoop.yarn.api.records.LocalResource;
 import org.apache.hadoop.yarn.api.records.LocalResourceType;
 import org.apache.hadoop.yarn.api.records.LocalResourceVisibility;
+import org.apache.hadoop.yarn.api.records.NodeId;
 import org.apache.hadoop.yarn.api.records.NodeReport;
 import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.Resource;
@@ -70,6 +77,7 @@ import org.apache.hadoop.yarn.api.records.ResourceRequest;
 import org.apache.hadoop.yarn.api.records.URL;
 import org.apache.hadoop.yarn.api.records.timeline.TimelineEntity;
 import org.apache.hadoop.yarn.api.records.timeline.TimelineEvent;
+import org.apache.hadoop.yarn.client.api.AMRMClient;
 import org.apache.hadoop.yarn.client.api.AMRMClient.ContainerRequest;
 import org.apache.hadoop.yarn.client.api.TimelineClient;
 import org.apache.hadoop.yarn.client.api.async.AMRMClientAsync;
@@ -247,9 +255,6 @@ public class ApplicationMaster {
 
     // Launch threads
     private List<Thread> launchThreads = new ArrayList<Thread>();
-
-    // Timeline Client
-    private TimelineClient timelineClient;
 
     private final String linux_bash_command = "bash";
     private final String windows_command = "cmd /c";
@@ -477,11 +482,6 @@ public class ApplicationMaster {
         requestPriority = Integer.parseInt(cliParser
                 .getOptionValue("priority", "0"));
 
-        // Creating the Timeline Client
-        timelineClient = TimelineClient.createTimelineClient();
-        timelineClient.init(conf);
-        timelineClient.start();
-
         return true;
     }
 
@@ -540,7 +540,7 @@ public class ApplicationMaster {
         nmClientAsync.start();
 
         httpServer = new NestoYarnHttpServer();
-        httpServer.start(DEFAULT_APP_MASTER_TRACKING_URL_PORT);
+        httpServer.start("AppMaster HTTP server", DEFAULT_APP_MASTER_TRACKING_URL_PORT);
 
         appMasterHostname = NetUtils.getHostname();
         appMasterTrackingUrl = "http://" + NetworkUtils.getLocalHostIP() + ":"
@@ -607,13 +607,6 @@ public class ApplicationMaster {
             amRMClient.addContainerRequest(containerAsk);
         }
         numRequestedContainers.set(numTotalContainers);
-//        try {
-//            publishApplicationAttemptEvent(timelineClient, appAttemptID.toString(),
-//                    DSEvent.DS_APP_ATTEMPT_END);
-//        } catch (Exception e) {
-//            LOG.error("App Attempt start event coud not be pulished for "
-//                    + appAttemptID.toString(), e);
-//        }
     }
 
     @VisibleForTesting
@@ -675,6 +668,8 @@ public class ApplicationMaster {
 
         amRMClient.stop();
 
+        IOUtils.closeStream(httpServer);
+
         return success;
     }
 
@@ -717,12 +712,6 @@ public class ApplicationMaster {
                     numCompletedContainers.incrementAndGet();
                     LOG.info("Container completed successfully." + ", containerId="
                             + containerStatus.getContainerId());
-                }
-                try {
-                    publishContainerEndEvent(timelineClient, containerStatus);
-                } catch (Exception e) {
-                    LOG.error("Container start event could not be pulished for "
-                            + containerStatus.getContainerId().toString(), e);
                 }
             }
 
@@ -792,6 +781,7 @@ public class ApplicationMaster {
         public void onError(Throwable e) {
             done = true;
             amRMClient.stop();
+            IOUtils.closeStream(httpServer);
         }
     }
 
@@ -837,13 +827,6 @@ public class ApplicationMaster {
             Container container = containers.get(containerId);
             if (container != null) {
                 applicationMaster.nmClientAsync.getContainerStatusAsync(containerId, container.getNodeId());
-            }
-            try {
-                ApplicationMaster.publishContainerStartEvent(
-                        applicationMaster.timelineClient, container);
-            } catch (Exception e) {
-                LOG.error("Container start event coud not be pulished for "
-                        + container.getId().toString(), e);
             }
         }
 
@@ -896,71 +879,8 @@ public class ApplicationMaster {
          * start request to the CM.
          */
         public void run() {
-            LOG.info("Setting up container launch container for containerid="
+            LOG.info("Setting up container launch container for containerId="
                     + container.getId());
-
-//            // Set the local resources
-//            Map<String, LocalResource> localResources = new HashMap<String, LocalResource>();
-//
-//            // The container for the eventual shell commands needs its own local
-//            // resources too.
-//            // In this scenario, if a shell script is specified, we need to have it
-//            // copied and made available to the container.
-//            if (!scriptPath.isEmpty()) {
-//                Path renamedScriptPath = null;
-//                if (Shell.WINDOWS) {
-//                    renamedScriptPath = new Path(scriptPath + ".bat");
-//                } else {
-//                    renamedScriptPath = new Path(scriptPath + ".sh");
-//                }
-//
-//                try {
-//                    // rename the script file based on the underlying OS syntax.
-//                    renameScriptFile(renamedScriptPath);
-//                } catch (Exception e) {
-//                    LOG.error(
-//                            "Not able to add suffix (.bat/.sh) to the shell script filename",
-//                            e);
-//                    // We know we cannot continue launching the container
-//                    // so we should release it.
-//                    numCompletedContainers.incrementAndGet();
-//                    numFailedContainers.incrementAndGet();
-//                    return;
-//                }
-//
-//                URL yarnUrl = null;
-//                try {
-//                    yarnUrl = ConverterUtils.getYarnUrlFromURI(
-//                            new URI(renamedScriptPath.toString()));
-//                } catch (URISyntaxException e) {
-//                    LOG.error("Error when trying to use shell script path specified"
-//                            + " in env, path=" + renamedScriptPath, e);
-//                    // A failure scenario on bad input such as invalid shell script path
-//                    // We know we cannot continue launching the container
-//                    // so we should release it.
-//                    // TODO
-//                    numCompletedContainers.incrementAndGet();
-//                    numFailedContainers.incrementAndGet();
-//                    return;
-//                }
-//                LocalResource shellRsrc = LocalResource.newInstance(yarnUrl,
-//                        LocalResourceType.FILE, LocalResourceVisibility.APPLICATION,
-//                        shellScriptPathLen, shellScriptPathTimestamp);
-//                localResources.put(Shell.WINDOWS ? ExecBatScripStringtPath :
-//                        ExecShellStringPath, shellRsrc);
-//                shellCommand = Shell.WINDOWS ? windows_command : linux_bash_command;
-//            }
-//
-//            // Set the necessary command to execute on the allocated container
-//            Vector<CharSequence> vargs = new Vector<CharSequence>(5);
-//
-//            // Set executable command
-//            vargs.add(shellCommand);
-//            // Set shell script path
-//            if (!scriptPath.isEmpty()) {
-//                vargs.add(Shell.WINDOWS ? ExecBatScripStringtPath
-//                        : ExecShellStringPath);
-//            }
 
             Map<String, String> currentEnvs = System.getenv();
             if (!currentEnvs.containsKey(NestoYarnConstants.NESTO_YARN_FRAMEWORK_PATH)) {
@@ -972,20 +892,19 @@ public class ApplicationMaster {
             shellEnv.put("CLASSPATH", NestoYarnHelper.buildClassPathEnv(conf));
 
             // Set the local resources
-            Map<String, LocalResource> localResources = new HashMap<>();
+            Map<String, LocalResource> localResources = new HashMap<>(4);
 
             try {
-                FileSystem fs = FileSystem.get(conf);
                 NestoYarnHelper.addFrameworkToDistributedCache(frameworkPath, localResources, conf);
             } catch (IOException e) {
-                e.printStackTrace();
+                Throwables.propagate(e);
             }
 
             // Set the necessary command to execute on the allocated container
             Vector<CharSequence> vargs = new Vector<CharSequence>(10);
 
             // Set java executable command
-            LOG.info("Setting up app command on " + container.getNodeId().getHost());
+            LOG.info("Setting up shell command on " + container.getNodeId().getHost());
 //            try {
 //                String log4jContents = Files.toString(new File(NestoYarnHelper.getAppContainerLog4jFile()),
 //                        Charsets.UTF_8);
@@ -999,8 +918,12 @@ public class ApplicationMaster {
             // Set am memory size
             vargs.add("-Xms" + containerMemory + "m");
             vargs.add("-Xmx" + containerMemory + "m");
+
+            // Set tmp dir
             vargs.add("-Djava.io.tmpdir=$PWD/tmp");
-            vargs.add("-Dlog4j.configuration=" + NestoYarnConstants.NESTO_YARN_APPCONTAINER_LOG4J);
+
+            // Set log4j configuration file
+            // vargs.add("-Dlog4j.configuration=" + NestoYarnConstants.NESTO_YARN_APPCONTAINER_LOG4J);
 
             // Set class name
             vargs.add(NestoYarnConstants.NESTO_YARN_SERVER_MAINCLASS);
@@ -1017,9 +940,9 @@ public class ApplicationMaster {
                 command.append(str).append(" ");
             }
 
-            LOG.info("Running command is \n" + command);
+            LOG.info("Shell command is: \n" + command);
 
-            List<String> commands = new ArrayList<String>();
+            List<String> commands = new ArrayList<>();
             commands.add(command.toString());
 
             // Set up ContainerLaunchContext, setting local resource, environment,
@@ -1036,20 +959,6 @@ public class ApplicationMaster {
             containerListener.addContainer(container.getId(), container);
             nmClientAsync.startContainerAsync(container, ctx);
         }
-    }
-
-    private void renameScriptFile(final Path renamedScriptPath)
-            throws IOException, InterruptedException {
-        appSubmitterUgi.doAs(new PrivilegedExceptionAction<Void>() {
-            @Override
-            public Void run() throws IOException {
-                FileSystem fs = renamedScriptPath.getFileSystem(conf);
-                fs.rename(new Path(scriptPath), renamedScriptPath);
-                return null;
-            }
-        });
-        LOG.info("User " + appSubmitterUgi.getUserName()
-                + " added suffix(.sh/.bat) to script file as " + renamedScriptPath);
     }
 
     /**
@@ -1087,55 +996,5 @@ public class ApplicationMaster {
         } finally {
             org.apache.commons.io.IOUtils.closeQuietly(ds);
         }
-    }
-
-    private static void publishContainerStartEvent(TimelineClient timelineClient,
-                                                   Container container) throws IOException, YarnException {
-        TimelineEntity entity = new TimelineEntity();
-        entity.setEntityId(container.getId().toString());
-        entity.setEntityType(DSEntity.DS_CONTAINER.toString());
-        entity.addPrimaryFilter("user",
-                UserGroupInformation.getCurrentUser().getShortUserName());
-        TimelineEvent event = new TimelineEvent();
-        event.setTimestamp(System.currentTimeMillis());
-        event.setEventType(DSEvent.DS_CONTAINER_START.toString());
-        event.addEventInfo("Node", container.getNodeId().toString());
-        event.addEventInfo("Resources", container.getResource().toString());
-        entity.addEvent(event);
-
-        timelineClient.putEntities(entity);
-    }
-
-    private static void publishContainerEndEvent(TimelineClient timelineClient,
-                                                 ContainerStatus container) throws IOException, YarnException {
-        TimelineEntity entity = new TimelineEntity();
-        entity.setEntityId(container.getContainerId().toString());
-        entity.setEntityType(DSEntity.DS_CONTAINER.toString());
-        entity.addPrimaryFilter("user",
-                UserGroupInformation.getCurrentUser().getShortUserName());
-        TimelineEvent event = new TimelineEvent();
-        event.setTimestamp(System.currentTimeMillis());
-        event.setEventType(DSEvent.DS_CONTAINER_END.toString());
-        event.addEventInfo("State", container.getState().name());
-        event.addEventInfo("Exit Status", container.getExitStatus());
-        entity.addEvent(event);
-
-        timelineClient.putEntities(entity);
-    }
-
-    private static void publishApplicationAttemptEvent(
-            TimelineClient timelineClient, String appAttemptId, DSEvent appEvent)
-            throws IOException, YarnException {
-        TimelineEntity entity = new TimelineEntity();
-        entity.setEntityId(appAttemptId);
-        entity.setEntityType(DSEntity.DS_APP_ATTEMPT.toString());
-        entity.addPrimaryFilter("user",
-                UserGroupInformation.getCurrentUser().getShortUserName());
-        TimelineEvent event = new TimelineEvent();
-        event.setEventType(appEvent.toString());
-        event.setTimestamp(System.currentTimeMillis());
-        entity.addEvent(event);
-
-        timelineClient.putEntities(entity);
     }
 }

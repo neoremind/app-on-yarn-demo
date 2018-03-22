@@ -57,7 +57,6 @@ import org.apache.hadoop.yarn.client.api.YarnClientApplication;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.exceptions.YarnException;
 import org.apache.hadoop.yarn.util.ConverterUtils;
-import org.apache.hadoop.yarn.util.Records;
 
 /**
  * Client for Distributed Shell application submission to YARN.
@@ -140,7 +139,9 @@ public class Client {
     // Start time for client
     private final long clientStartTime = System.currentTimeMillis();
     // Timeout threshold for client. Kill app after time interval expires.
-    private long clientTimeout = 600000;
+    // -1 means no timeout so that the application will not be killed after timeout,
+    // in other words, long time running job will be kept running.
+    private long clientTimeout = -1;
 
     // flag to indicate whether to keep containers across application attempts.
     private boolean keepContainers = false;
@@ -162,7 +163,7 @@ public class Client {
     /**
      * Application master jar file
      */
-    private String frameworkPath = "";
+    private String appMasterJarInHDFS = "";
 
     /**
      * @param args Command line arguments
@@ -215,7 +216,8 @@ public class Client {
         opts.addOption("timeout", true, "Application timeout in milliseconds");
         opts.addOption("master_memory", true, "Amount of memory in MB to be requested to run the application master");
         opts.addOption("master_vcores", true, "Amount of virtual cores to be requested to run the application master");
-        opts.addOption("jar", true, "Jar file containing the application master");
+        opts.addOption("jar_path", true, "Jar file containing the application master in local file system");
+        opts.addOption("jar_path_in_hdfs", true, "Jar file containing the application master in HDFS");
         opts.addOption("shell_command", true, "Shell command to be executed by " +
                 "the Application Master. Can only specify either --shell_command " +
                 "or --shell_script");
@@ -237,7 +239,6 @@ public class Client {
                         " the new application attempt ");
         opts.addOption("debug", false, "Dump out debug information");
         opts.addOption("help", false, "Print usage");
-        opts.addOption("framework_path", true, "Framework hdfs location containing the application master jar and conf");
 
     }
 
@@ -292,13 +293,11 @@ public class Client {
             keepContainers = true;
         }
 
-        appName = cliParser.getOptionValue("appname", "DistributedShell");
+        appName = cliParser.getOptionValue("appname", "AppOnYarnDemo");
         amPriority = Integer.parseInt(cliParser.getOptionValue("priority", "0"));
         amQueue = cliParser.getOptionValue("queue", "default");
         amMemory = Integer.parseInt(cliParser.getOptionValue("master_memory", "10"));
         amVCores = Integer.parseInt(cliParser.getOptionValue("master_vcores", "1"));
-
-        frameworkPath = cliParser.getOptionValue("framework_path");
 
         if (amMemory < 0) {
             throw new IllegalArgumentException("Invalid memory specified for application master, exiting."
@@ -309,11 +308,16 @@ public class Client {
                     + " Specified virtual cores=" + amVCores);
         }
 
-        if (!cliParser.hasOption("jar")) {
-            throw new IllegalArgumentException("No jar file specified for application master");
+        if (!cliParser.hasOption("jar_path")) {
+            throw new IllegalArgumentException("No jar file path specified for application master");
         }
 
-        appMasterJar = cliParser.getOptionValue("jar");
+        appMasterJar = cliParser.getOptionValue("jar_path");
+
+        if (!cliParser.hasOption("jar_path_in_hdfs")) {
+            throw new IllegalArgumentException("No jar file path in hdfs specified for application master");
+        }
+        appMasterJarInHDFS = cliParser.getOptionValue("jar_path_in_hdfs");
 
         if (!cliParser.hasOption("shell_command") && !cliParser.hasOption("shell_script")) {
             throw new IllegalArgumentException(
@@ -360,7 +364,7 @@ public class Client {
                     + ", numContainer=" + numContainers);
         }
 
-        clientTimeout = Integer.parseInt(cliParser.getOptionValue("timeout", "600000"));
+        clientTimeout = Integer.parseInt(cliParser.getOptionValue("timeout", "-1"));
 
         log4jPropFile = cliParser.getOptionValue("log_properties", "");
 
@@ -457,7 +461,7 @@ public class Client {
         FileSystem fs = FileSystem.get(conf);
         addToLocalResources(fs, appMasterJar, appMasterJarPath, appId.toString(),
                 localResources, null);
-        NestoYarnHelper.addFrameworkToDistributedCache(frameworkPath, localResources, conf);
+        NestoYarnHelper.addFrameworkToDistributedCache(appMasterJarInHDFS, localResources, conf);
 
         // Set the log4j properties if needed
         if (!log4jPropFile.isEmpty()) {
@@ -505,7 +509,7 @@ public class Client {
         Map<String, String> env = new HashMap<String, String>();
 
         env.put("CLASSPATH", NestoYarnHelper.buildClassPathEnv(conf));
-        env.put(NestoYarnConstants.NESTO_YARN_FRAMEWORK_PATH, frameworkPath);
+        env.put(NestoYarnConstants.NESTO_YARN_FRAMEWORK_PATH, appMasterJarInHDFS);
 
         // put location of shell script into env
         // using the env info, the application master will create the correct local resource for the
@@ -653,9 +657,9 @@ public class Client {
 
         while (true) {
 
-            // Check app status every 1 second.
+            // Check app status every 5 second.
             try {
-                Thread.sleep(1000);
+                Thread.sleep(5000);
             } catch (InterruptedException e) {
                 LOG.debug("Thread sleep in monitoring loop interrupted");
             }
@@ -698,7 +702,7 @@ public class Client {
                 return false;
             }
 
-            if (System.currentTimeMillis() > (clientStartTime + clientTimeout)) {
+            if (clientTimeout > 0 && System.currentTimeMillis() > (clientStartTime + clientTimeout)) {
                 LOG.info("Reached client specified timeout for application. Killing application");
                 forceKillApplication(appId);
                 return false;

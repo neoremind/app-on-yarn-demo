@@ -14,7 +14,7 @@ public class NestoServerExecutor {
 
     public static void run(String[] args) throws Exception {
         NestoYarnHttpServer httpServer = new NestoYarnHttpServer();
-        httpServer.start(8290);
+        httpServer.start("My App", 8190);
     }
 
     public static String getCurrentUserName() throws Exception {
