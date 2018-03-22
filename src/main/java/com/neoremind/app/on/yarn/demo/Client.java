@@ -1,13 +1,5 @@
 package com.neoremind.app.on.yarn.demo;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Vector;
-
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.GnuParser;
 import org.apache.commons.cli.HelpFormatter;
@@ -58,36 +50,43 @@ import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.exceptions.YarnException;
 import org.apache.hadoop.yarn.util.ConverterUtils;
 
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Vector;
+
 /**
  * Client for Distributed Shell application submission to YARN.
- *
+ * <p>
  * <p> The distributed shell client allows an application master to be launched that in turn would run
  * the provided shell command on a set of containers. </p>
- *
+ * <p>
  * <p>This client is meant to act as an example on how to write yarn-based applications. </p>
- *
+ * <p>
  * <p> To submit an application, a client first needs to connect to the <code>ResourceManager</code>
  * aka ApplicationsManager or ASM via the {@link ApplicationClientProtocol}. The {@link ApplicationClientProtocol}
  * provides a way for the client to get access to cluster information and to request for a
  * new {@link ApplicationId}. <p>
- *
+ * <p>
  * <p> For the actual job submission, the client first has to create an {@link ApplicationSubmissionContext}.
  * The {@link ApplicationSubmissionContext} defines the application details such as {@link ApplicationId}
  * and application name, the priority assigned to the application and the queue
  * to which this application needs to be assigned. In addition to this, the {@link ApplicationSubmissionContext}
  * also defines the {@link ContainerLaunchContext} which describes the <code>Container</code> with which
  * the {@link ApplicationMaster} is launched. </p>
- *
+ * <p>
  * <p> The {@link ContainerLaunchContext} in this scenario defines the resources to be allocated for the
  * {@link ApplicationMaster}'s container, the local resources (jars, configuration files) to be made available
  * and the environment to be set for the {@link ApplicationMaster} and the commands to be executed to run the
  * {@link ApplicationMaster}. <p>
- *
+ * <p>
  * <p> Using the {@link ApplicationSubmissionContext}, the client submits the application to the
  * <code>ResourceManager</code> and then monitors the application by requesting the <code>ResourceManager</code>
  * for an {@link ApplicationReport} at regular time intervals. In case of the application taking too long, the client
  * kills the application by submitting a {@link KillApplicationRequest} to the <code>ResourceManager</code>. </p>
- *
  */
 @InterfaceAudience.Public
 @InterfaceStability.Unstable
@@ -114,7 +113,8 @@ public class Client {
     // Main class to invoke application master
     private final String appMasterMainClass;
 
-    private String[] shellArgs = new String[] {};
+    private String[] shellArgs = new String[]{};
+    private String[] javaOpts = new String[]{};
     // Env variables to be setup for the shell command
     private Map<String, String> shellEnv = new HashMap<String, String>();
     // Shell Command Container priority
@@ -147,10 +147,13 @@ public class Client {
     // Command line options
     private Options opts;
 
+    private static final String javaOptsPath = "javaOpts";
     private static final String shellArgsPath = "shellArgs";
     private static final String appMasterJarPath = "AppMaster.jar";
     // Hardcoded path to custom log_properties
     private static final String log4jPath = "log4j.properties";
+
+    private int memoryOverhead = 384;
 
     /**
      * Application master jar file
@@ -190,7 +193,7 @@ public class Client {
 
     /**
      */
-    public Client(Configuration conf) throws Exception  {
+    public Client(Configuration conf) throws Exception {
         this(
                 "com.neoremind.app.on.yarn.demo.ApplicationMaster",
                 conf);
@@ -208,10 +211,12 @@ public class Client {
         opts.addOption("timeout", true, "Application timeout in milliseconds");
         opts.addOption("master_memory", true, "Amount of memory in MB to be requested to run the application master");
         opts.addOption("master_vcores", true, "Amount of virtual cores to be requested to run the application master");
+        opts.addOption("memory_overhead", true, "Amount of memory overhead in MB for application master and container");
         opts.addOption("jar_path", true, "Jar file containing the application master in local file system");
         opts.addOption("jar_path_in_hdfs", true, "Jar file containing the application master in HDFS");
         opts.addOption("shell_args", true, "Command line args for the shell script." +
                 "Multiple args can be separated by empty space.");
+        opts.addOption("java_opts", true, "Java opts for container");
         opts.getOption("shell_args").setArgs(Option.UNLIMITED_VALUES);
         opts.addOption("shell_env", true, "Environment for shell script. Specified as env_key=env_val pairs");
         opts.addOption("container_memory", true, "Amount of memory in MB to be requested to run the shell command");
@@ -229,7 +234,7 @@ public class Client {
 
     /**
      */
-    public Client() throws Exception  {
+    public Client() throws Exception {
         this(new YarnConfiguration());
     }
 
@@ -242,6 +247,7 @@ public class Client {
 
     /**
      * Parse command line options
+     *
      * @param args Parsed command line options
      * @return Whether the init was successful to run the client
      * @throws ParseException
@@ -307,6 +313,9 @@ public class Client {
         if (cliParser.hasOption("shell_args")) {
             shellArgs = cliParser.getOptionValues("shell_args");
         }
+        if (cliParser.hasOption("java_opts")) {
+            javaOpts = cliParser.getOptionValues("java_opts");
+        }
         if (cliParser.hasOption("shell_env")) {
             String envs[] = cliParser.getOptionValues("shell_env");
             for (String env : envs) {
@@ -318,8 +327,8 @@ public class Client {
                 }
                 String key = env.substring(0, index);
                 String val = "";
-                if (index < (env.length()-1)) {
-                    val = env.substring(index+1);
+                if (index < (env.length() - 1)) {
+                    val = env.substring(index + 1);
                 }
                 shellEnv.put(key, val);
             }
@@ -327,6 +336,12 @@ public class Client {
         containerMemory = Integer.parseInt(cliParser.getOptionValue("container_memory", "10"));
         containerVirtualCores = Integer.parseInt(cliParser.getOptionValue("container_vcores", "1"));
         numContainers = Integer.parseInt(cliParser.getOptionValue("num_containers", "1"));
+
+        if (!cliParser.hasOption("memory_overhead")) {
+            memoryOverhead = Math.max((int) (containerMemory * 0.1), 384);
+        } else {
+            memoryOverhead = Integer.parseInt(cliParser.getOptionValue("memory_overhead", "384"));
+        }
 
         if (containerMemory < 0 || containerVirtualCores < 0 || numContainers < 1) {
             throw new IllegalArgumentException("Invalid no. of containers or container memory/vcores specified,"
@@ -345,6 +360,7 @@ public class Client {
 
     /**
      * Main run function for the client
+     *
      * @return true if application completed successfully
      * @throws IOException
      * @throws YarnException
@@ -398,11 +414,11 @@ public class Client {
         LOG.info("Max mem capabililty of resources in this cluster " + maxMem);
 
         // A resource ask cannot exceed the max.
-        if (amMemory > maxMem) {
+        if (amMemory + memoryOverhead > maxMem) {
             LOG.info("AM memory specified above max threshold of cluster. Using max value."
                     + ", specified=" + amMemory
                     + ", max=" + maxMem);
-            amMemory = maxMem;
+            amMemory = maxMem - memoryOverhead;
         }
 
         int maxVCores = appResponse.getMaximumResourceCapability().getVirtualCores();
@@ -441,18 +457,14 @@ public class Client {
                     localResources, null);
         }
 
-        // The shell script has to be made available on the final container(s)
-        // where it will be executed.
-        // To do this, we need to first copy into the filesystem that is visible
-        // to the yarn framework.
-        // We do not need to set this as a local resource for the application
-        // master as the application master does not need it.
-        String hdfsShellScriptLocation = "";
-        long hdfsShellScriptLen = 0;
-
         if (shellArgs.length > 0) {
             addToLocalResources(fs, null, shellArgsPath, appId.toString(),
                     localResources, StringUtils.join(shellArgs, " "));
+        }
+
+        if (javaOpts.length > 0) {
+            addToLocalResources(fs, null, javaOptsPath, appId.toString(),
+                    localResources, StringUtils.join(javaOpts, " "));
         }
 
         // Set the necessary security tokens as needed
@@ -503,6 +515,7 @@ public class Client {
         // Set params for Application Master
         vargs.add("--container_memory " + String.valueOf(containerMemory));
         vargs.add("--container_vcores " + String.valueOf(containerVirtualCores));
+        vargs.add("--memory_overhead " + String.valueOf(memoryOverhead));
         vargs.add("--num_containers " + String.valueOf(numContainers));
         vargs.add("--priority " + String.valueOf(shellCmdPriority));
 
@@ -533,7 +546,7 @@ public class Client {
         // Set up resource type requirements
         // For now, both memory and vcores are supported, so we set memory and
         // vcores requirements
-        Resource capability = Resource.newInstance(amMemory, amVCores);
+        Resource capability = Resource.newInstance(amMemory + memoryOverhead, amVCores);
         appContext.setResource(capability);
 
         // Service data is a binary blob that can be passed to the application
@@ -594,6 +607,7 @@ public class Client {
     /**
      * Monitor the submitted application for completion.
      * Kill application if time expires.
+     *
      * @param appId Application Id of application to be monitored
      * @return true if application completed successfully
      * @throws YarnException
@@ -633,15 +647,13 @@ public class Client {
                 if (FinalApplicationStatus.SUCCEEDED == dsStatus) {
                     LOG.info("Application has completed successfully. Breaking monitoring loop");
                     return true;
-                }
-                else {
+                } else {
                     LOG.info("Application did finished unsuccessfully."
                             + " YarnState=" + state.toString() + ", DSFinalStatus=" + dsStatus.toString()
                             + ". Breaking monitoring loop");
                     return false;
                 }
-            }
-            else if (YarnApplicationState.KILLED == state
+            } else if (YarnApplicationState.KILLED == state
                     || YarnApplicationState.FAILED == state) {
                 LOG.info("Application did not finish."
                         + " YarnState=" + state.toString() + ", DSFinalStatus=" + dsStatus.toString()
@@ -660,6 +672,7 @@ public class Client {
 
     /**
      * Kill a submitted application by sending a call to the ASM
+     *
      * @param appId Application Id to be killed.
      * @throws YarnException
      * @throws IOException

@@ -46,19 +46,25 @@ public class YarnAppMasterHttpServer extends BaseHttpServer {
                 if (applicationMaster != null) {
                     out.println(String.format("<div>Total request container count is %d</div>", applicationMaster.numTotalContainers));
                     out.println(String.format("<div>Running container count is %d</div>", applicationMaster.getRunningContainers().size()));
-                    out.println("<table border=\"1\"><tr><th>ContainerId</th><th>Container Info</th></tr>");
+                    out.println("<table border=\"1\"><tr><th>ContainerId</th><th>Container Info</th><th>Node Link</th></tr>");
                     for (Map.Entry<ContainerId, Container> e : applicationMaster.getRunningContainers().entrySet()) {
-                        out.println(String.format("<tr><td>%s</td><td>%s</td></tr>", e.getKey().getContainerId(),
+                        out.println(String.format("<tr><td>%s</td><td>%s</td><td>%s</td></tr>", e.getKey().getContainerId(),
                                 "ApplicationAttemptId : " + e.getKey().getApplicationAttemptId() +
-                                ",  NodeId : " + e.getValue().getNodeId() +
+                                        ",  NodeId : " + e.getValue().getNodeId() +
                                         " ,  NodeHttpAddress : " + e.getValue().getNodeHttpAddress() +
                                         "  [mem : " + e.getValue().getResource().getMemory() + ", vcores: " +
-                                        e.getValue().getResource().getVirtualCores() + "]"));
+                                        e.getValue().getResource().getVirtualCores() + "]",
+                                "<a href=\"" + getNodeLinks(e.getValue().getNodeHttpAddress()) + "\">" +
+                                        getNodeLinks(e.getValue().getNodeHttpAddress()) + "</a>"));
                     }
                     out.println("</table>");
                 }
                 out.println("</body>");
             }
+        }
+
+        private String getNodeLinks(String nodeHttpAddress) {
+            return nodeHttpAddress + "/node/application/" + applicationMaster.appAttemptID.getApplicationId();
         }
     }
 

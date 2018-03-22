@@ -10,7 +10,6 @@ import org.apache.commons.cli.ParseException;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
-import org.apache.hadoop.classification.InterfaceAudience.Private;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.DataOutputBuffer;
@@ -190,10 +189,11 @@ public class ApplicationMaster {
     @VisibleForTesting
     protected AtomicInteger numRequestedContainers = new AtomicInteger();
 
-    // Shell command to be executed
-    private String shellCommand = "";
     // Args to be passed to the shell command
     private String shellArgs = "";
+
+    private String javaOpts = "";
+
     // Env variables to be setup for the shell command
     private Map<String, String> shellEnv = new HashMap<String, String>();
 
@@ -201,6 +201,7 @@ public class ApplicationMaster {
     private static final String log4jPath = "log4j.properties";
 
     private static final String shellArgsPath = "shellArgs";
+    private static final String javaOptsPath = "javaOpts";
 
     private volatile boolean done;
 
@@ -214,6 +215,9 @@ public class ApplicationMaster {
     private YarnAppMasterHttpServer httpServer;
 
     public static final int DEFAULT_APP_MASTER_TRACKING_URL_PORT = 8090;
+
+    // Container memory overhead in MB
+    private int memoryOverhead = 384;
 
     /**
      * @param args Command line args
@@ -297,6 +301,9 @@ public class ApplicationMaster {
                 "Amount of virtual cores to be requested to run the shell command");
         opts.addOption("num_containers", true,
                 "No. of containers on which the shell command needs to be executed");
+        opts.addOption("memory_overhead", true,
+                "Amount of memory overhead in MB for container");
+        opts.addOption("java_opts", true, "Java opts for container");
         opts.addOption("priority", true, "Application Priority. Default 0");
         opts.addOption("debug", false, "Dump out debug information");
 
@@ -370,6 +377,10 @@ public class ApplicationMaster {
             shellArgs = readContent(shellArgsPath);
         }
 
+        if (fileExist(javaOptsPath)) {
+            javaOpts = readContent(javaOptsPath);
+        }
+
         if (cliParser.hasOption("shell_env")) {
             String shellEnvs[] = cliParser.getOptionValues("shell_env");
             for (String env : shellEnvs) {
@@ -397,6 +408,12 @@ public class ApplicationMaster {
         if (numTotalContainers == 0) {
             throw new IllegalArgumentException(
                     "Cannot run distributed shell with no containers");
+        }
+        if (!cliParser.hasOption("memory_overhead")) {
+            memoryOverhead = Math.max((int) (containerMemory * 0.1), 384);
+        } else {
+            memoryOverhead = Integer.parseInt(cliParser.getOptionValue(
+                    "memory_overhead", "384"));
         }
         requestPriority = Integer.parseInt(cliParser
                 .getOptionValue("priority", "0"));
@@ -493,11 +510,11 @@ public class ApplicationMaster {
         LOG.info("Max vcores capability of resources in this cluster " + maxVCores);
 
         // A resource ask cannot exceed the max.
-        if (containerMemory > maxMem) {
+        if (containerMemory + memoryOverhead > maxMem) {
             LOG.info("Container memory specified above max threshold of cluster."
-                    + " Using max value." + ", specified=" + containerMemory + ", max="
+                    + " Using max value." + ", specified=" + (containerMemory + memoryOverhead) + ", max="
                     + maxMem);
-            containerMemory = maxMem;
+            containerMemory = maxMem - memoryOverhead;
         }
 
         if (containerVirtualCores > maxVCores) {
@@ -818,6 +835,7 @@ public class ApplicationMaster {
             // Set am memory size
             vargs.add("-Xms" + containerMemory + "m");
             vargs.add("-Xmx" + containerMemory + "m");
+            vargs.add(javaOpts);
 
             // Set tmp dir
             vargs.add("-Djava.io.tmpdir=$PWD/tmp");
@@ -876,7 +894,7 @@ public class ApplicationMaster {
 
         // Set up resource type requirements
         // For now, memory and CPU are supported so we set memory and cpu requirements
-        Resource capability = Resource.newInstance(containerMemory,
+        Resource capability = Resource.newInstance(containerMemory + memoryOverhead,
                 containerVirtualCores);
 
         ContainerRequest request = new ContainerRequest(capability, null, null,
