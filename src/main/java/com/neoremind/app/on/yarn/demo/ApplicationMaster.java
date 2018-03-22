@@ -137,18 +137,6 @@ public class ApplicationMaster {
 
     private static final Log LOG = LogFactory.getLog(ApplicationMaster.class);
 
-    @VisibleForTesting
-    @Private
-    public static enum DSEvent {
-        DS_APP_ATTEMPT_START, DS_APP_ATTEMPT_END, DS_CONTAINER_START, DS_CONTAINER_END
-    }
-
-    @VisibleForTesting
-    @Private
-    public static enum DSEntity {
-        DS_APP_ATTEMPT, DS_CONTAINER
-    }
-
     // Configuration
     private Configuration conf;
 
@@ -209,23 +197,9 @@ public class ApplicationMaster {
     // Env variables to be setup for the shell command
     private Map<String, String> shellEnv = new HashMap<String, String>();
 
-    // Location of shell script ( obtained from info set in env )
-    // Shell script path in fs
-    private String scriptPath = "";
-    // Timestamp needed for creating a local resource
-    private long shellScriptPathTimestamp = 0;
-    // File length needed for local resource
-    private long shellScriptPathLen = 0;
-
-    // Hardcoded path to shell script in launch container's local env
-    private static final String ExecShellStringPath = Client.SCRIPT_PATH + ".sh";
-    private static final String ExecBatScripStringtPath = Client.SCRIPT_PATH
-            + ".bat";
-
     // Hardcoded path to custom log_properties
     private static final String log4jPath = "log4j.properties";
 
-    private static final String shellCommandPath = "shellCommands";
     private static final String shellArgsPath = "shellArgs";
 
     private volatile boolean done;
@@ -234,9 +208,6 @@ public class ApplicationMaster {
 
     // Launch threads
     private List<Thread> launchThreads = new ArrayList<Thread>();
-
-    private final String linux_bash_command = "bash";
-    private final String windows_command = "cmd /c";
 
     private ConcurrentHashMap<ContainerId, Container> runningContainers = new ConcurrentHashMap<>();
 
@@ -276,7 +247,6 @@ public class ApplicationMaster {
      * Dump out contents of $CWD and the environment to stdout for debugging
      */
     private void dumpOutDebugInfo() {
-
         LOG.info("Dump debug output");
         Map<String, String> envs = System.getenv();
         for (Map.Entry<String, String> env : envs.entrySet()) {
@@ -290,7 +260,7 @@ public class ApplicationMaster {
             String lines = Shell.WINDOWS ? Shell.execCommand("cmd", "/c", "dir") :
                     Shell.execCommand("ls", "-al");
             buf = new BufferedReader(new StringReader(lines));
-            String line = "";
+            String line;
             while ((line = buf.readLine()) != null) {
                 LOG.info("System CWD content: " + line);
                 System.out.println("System CWD content: " + line);
@@ -396,16 +366,6 @@ public class ApplicationMaster {
                 + appAttemptID.getApplicationId().getClusterTimestamp()
                 + ", attemptId=" + appAttemptID.getAttemptId());
 
-        if (!fileExist(shellCommandPath)
-                && envs.get(DSConstants.DISTRIBUTEDSHELLSCRIPTLOCATION).isEmpty()) {
-            throw new IllegalArgumentException(
-                    "No shell command or shell script specified to be executed by application master");
-        }
-
-        if (fileExist(shellCommandPath)) {
-            shellCommand = readContent(shellCommandPath);
-        }
-
         if (fileExist(shellArgsPath)) {
             shellArgs = readContent(shellArgsPath);
         }
@@ -425,28 +385,6 @@ public class ApplicationMaster {
                     val = env.substring(index + 1);
                 }
                 shellEnv.put(key, val);
-            }
-        }
-
-        if (envs.containsKey(DSConstants.DISTRIBUTEDSHELLSCRIPTLOCATION)) {
-            scriptPath = envs.get(DSConstants.DISTRIBUTEDSHELLSCRIPTLOCATION);
-
-            if (envs.containsKey(DSConstants.DISTRIBUTEDSHELLSCRIPTTIMESTAMP)) {
-                shellScriptPathTimestamp = Long.valueOf(envs
-                        .get(DSConstants.DISTRIBUTEDSHELLSCRIPTTIMESTAMP));
-            }
-            if (envs.containsKey(DSConstants.DISTRIBUTEDSHELLSCRIPTLEN)) {
-                shellScriptPathLen = Long.valueOf(envs
-                        .get(DSConstants.DISTRIBUTEDSHELLSCRIPTLEN));
-            }
-
-            if (!scriptPath.isEmpty()
-                    && (shellScriptPathTimestamp <= 0 || shellScriptPathLen <= 0)) {
-                LOG.error("Illegal values in env for shell script path" + ", path="
-                        + scriptPath + ", len=" + shellScriptPathLen + ", timestamp="
-                        + shellScriptPathTimestamp);
-                throw new IllegalArgumentException(
-                        "Illegal values in env for shell script path");
             }
         }
 

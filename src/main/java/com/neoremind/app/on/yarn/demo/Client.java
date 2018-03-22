@@ -114,11 +114,6 @@ public class Client {
     // Main class to invoke application master
     private final String appMasterMainClass;
 
-    // Shell command to be executed
-    private String shellCommand = "";
-    // Location of shell script
-    private String shellScriptPath = "";
-    // Args to be passed to the shell command
     private String[] shellArgs = new String[] {};
     // Env variables to be setup for the shell command
     private Map<String, String> shellEnv = new HashMap<String, String>();
@@ -152,13 +147,10 @@ public class Client {
     // Command line options
     private Options opts;
 
-    private static final String shellCommandPath = "shellCommands";
     private static final String shellArgsPath = "shellArgs";
     private static final String appMasterJarPath = "AppMaster.jar";
     // Hardcoded path to custom log_properties
     private static final String log4jPath = "log4j.properties";
-
-    public static final String SCRIPT_PATH = "ExecScript";
 
     /**
      * Application master jar file
@@ -218,16 +210,10 @@ public class Client {
         opts.addOption("master_vcores", true, "Amount of virtual cores to be requested to run the application master");
         opts.addOption("jar_path", true, "Jar file containing the application master in local file system");
         opts.addOption("jar_path_in_hdfs", true, "Jar file containing the application master in HDFS");
-        opts.addOption("shell_command", true, "Shell command to be executed by " +
-                "the Application Master. Can only specify either --shell_command " +
-                "or --shell_script");
-        opts.addOption("shell_script", true, "Location of the shell script to be " +
-                "executed. Can only specify either --shell_command or --shell_script");
         opts.addOption("shell_args", true, "Command line args for the shell script." +
                 "Multiple args can be separated by empty space.");
         opts.getOption("shell_args").setArgs(Option.UNLIMITED_VALUES);
         opts.addOption("shell_env", true, "Environment for shell script. Specified as env_key=env_val pairs");
-        opts.addOption("shell_cmd_priority", true, "Priority for the shell command containers");
         opts.addOption("container_memory", true, "Amount of memory in MB to be requested to run the shell command");
         opts.addOption("container_vcores", true, "Amount of virtual cores to be requested to run the shell command");
         opts.addOption("num_containers", true, "No. of containers on which the shell command needs to be executed");
@@ -239,7 +225,6 @@ public class Client {
                         " the new application attempt ");
         opts.addOption("debug", false, "Dump out debug information");
         opts.addOption("help", false, "Print usage");
-
     }
 
     /**
@@ -319,17 +304,6 @@ public class Client {
         }
         appMasterJarInHDFS = cliParser.getOptionValue("jar_path_in_hdfs");
 
-        if (!cliParser.hasOption("shell_command") && !cliParser.hasOption("shell_script")) {
-            throw new IllegalArgumentException(
-                    "No shell command or shell script specified to be executed by application master");
-        } else if (cliParser.hasOption("shell_command") && cliParser.hasOption("shell_script")) {
-            throw new IllegalArgumentException("Can not specify shell_command option " +
-                    "and shell_script option at the same time");
-        } else if (cliParser.hasOption("shell_command")) {
-            shellCommand = cliParser.getOptionValue("shell_command");
-        } else {
-            shellScriptPath = cliParser.getOptionValue("shell_script");
-        }
         if (cliParser.hasOption("shell_args")) {
             shellArgs = cliParser.getOptionValues("shell_args");
         }
@@ -350,8 +324,6 @@ public class Client {
                 shellEnv.put(key, val);
             }
         }
-        shellCmdPriority = Integer.parseInt(cliParser.getOptionValue("shell_cmd_priority", "0"));
-
         containerMemory = Integer.parseInt(cliParser.getOptionValue("container_memory", "10"));
         containerVirtualCores = Integer.parseInt(cliParser.getOptionValue("container_vcores", "1"));
         numContainers = Integer.parseInt(cliParser.getOptionValue("num_containers", "1"));
@@ -477,24 +449,6 @@ public class Client {
         // master as the application master does not need it.
         String hdfsShellScriptLocation = "";
         long hdfsShellScriptLen = 0;
-        long hdfsShellScriptTimestamp = 0;
-        if (!shellScriptPath.isEmpty()) {
-            Path shellSrc = new Path(shellScriptPath);
-            String shellPathSuffix =
-                    appName + "/" + appId.toString() + "/" + SCRIPT_PATH;
-            Path shellDst =
-                    new Path(fs.getHomeDirectory(), shellPathSuffix);
-            fs.copyFromLocalFile(false, true, shellSrc, shellDst);
-            hdfsShellScriptLocation = shellDst.toUri().toString();
-            FileStatus shellFileStatus = fs.getFileStatus(shellDst);
-            hdfsShellScriptLen = shellFileStatus.getLen();
-            hdfsShellScriptTimestamp = shellFileStatus.getModificationTime();
-        }
-
-        if (!shellCommand.isEmpty()) {
-            addToLocalResources(fs, null, shellCommandPath, appId.toString(),
-                    localResources, shellCommand);
-        }
 
         if (shellArgs.length > 0) {
             addToLocalResources(fs, null, shellArgsPath, appId.toString(),
@@ -510,13 +464,6 @@ public class Client {
 
         env.put("CLASSPATH", YarnHelper.buildClassPathEnv(conf));
         env.put(Constants.JAR_FILE_PATH, appMasterJarInHDFS);
-
-        // put location of shell script into env
-        // using the env info, the application master will create the correct local resource for the
-        // eventual containers that will be launched to execute the shell scripts
-        env.put(DSConstants.DISTRIBUTEDSHELLSCRIPTLOCATION, hdfsShellScriptLocation);
-        env.put(DSConstants.DISTRIBUTEDSHELLSCRIPTTIMESTAMP, Long.toString(hdfsShellScriptTimestamp));
-        env.put(DSConstants.DISTRIBUTEDSHELLSCRIPTLEN, Long.toString(hdfsShellScriptLen));
 
         // Add AppMaster.jar location to classpath
         // At some point we should not be required to add
