@@ -64,7 +64,7 @@ public class YarnAppMasterHttpServer extends BaseHttpServer {
         }
 
         private String getNodeLinks(String nodeHttpAddress) {
-            return nodeHttpAddress + "/node/application/" + applicationMaster.appAttemptID.getApplicationId();
+            return "http://" + nodeHttpAddress + "/node/application/" + applicationMaster.appAttemptID.getApplicationId();
         }
     }
 
