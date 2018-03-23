@@ -1,16 +1,16 @@
 # Application hosted on YARN demo
 
 ## 1. 介绍
-Apache Hadoop Yarn是big data领域通用的资源管理与调度平台，很多计算框架均可以跑在Yarn上，例如Mapreduce、Spark、Flink、Storm等，这些计算框架可以专注于计算本身，Yarn提供的高度抽象的接口来做集成。
+[Apache Hadoop Yarn](http://hadoop.apache.org/)是big data领域通用的资源管理与调度平台，很多计算框架均可以跑在Yarn上，例如Mapreduce、Spark、Flink、Storm等，这些计算框架可以专注于计算本身，Yarn提供的高度抽象的接口来做集成。
 
-![](https://github.com/neoremind/mydoc/blob/master/image/yarn_arch.png)
+![https://github.com/neoremind/mydoc/blob/master/image/yarn_arch.png](https://github.com/neoremind/mydoc/blob/master/image/yarn_arch.png)
 
 除了big data以外，实际一些长服务（long time running service）也可以跑在Yarn上，这里做了一些探索。这个项目就可以把service跑在Yarn上，一些实际场景例如，需要考虑HDFS本地化的OLAP引擎，实际生产环境的例子是Hulu的OLAP引擎Nesto跑在Yarn上面；或者干脆就是一个纯粹的service。
 
-如下图，service x通过Yarn维持固定跑N个实例。
+如下图，`service x`通过Yarn维持固定跑N个实例。
 
 
-![](https://github.com/neoremind/mydoc/blob/master/image/yarn_service.png)
+![https://github.com/neoremind/mydoc/blob/master/image/yarn_service.png](https://github.com/neoremind/mydoc/blob/master/image/yarn_service.png)
 
 
 ## 2. 搭建Hadoop环境
@@ -30,6 +30,7 @@ Apache Hadoop Yarn是big data领域通用的资源管理与调度平台，很多
 | Constants            | [Link]()      |  包括静态变量，YARN Container跑Java类的main class       |
 
 另外两个重要的类如下，无需修改。
+
 | 类名    | 路径      | 作用     | 
 | -------------- | ------------ | -------------- |
 | ApplicationMaster            | [Link]()      |  YARN ApplicationMaster程序       |
@@ -99,10 +100,13 @@ usage:
 
 ### 运行demo动图
 
+![](https://github.com/neoremind/mydoc/blob/master/image/yarn-demo4.gif)
 
 ### 高可用测试动图
 
-确保`yarn-site.xml`中的配置，是一个比较大的值，否则app master默认挂2次就会退出，例如设置成99.
+![](https://github.com/neoremind/mydoc/blob/master/image/yarn-demo5.gif)
+
+注意，确保`yarn-site.xml`中的配置，是一个比较大的值，否则只有container支持高可用，app master默认挂2次就会退出，例如设置成99.
 ```
 <property>
   <name>yarn.resourcemanager.am.max-attempts</name>
@@ -151,15 +155,16 @@ yarn jar app-on-yarn-demo-1.0.0-SNAPSHOT.jar com.neoremind.app.on.yarn.demo.Clie
   -jar_path /root/app-on-yarn-demo-1.0.0-SNAPSHOT.jar \
   -jar_path_in_hdfs hdfs://hadoop-master:9000/app-on-yarn-demo-1.0.0-SNAPSHOT.jar \
   -appname DemoApp \
-  -master_memory 2048 \
+  -master_memory 1024 \
   -master_vcores 1 \
-  -container_memory 2048 \
+  -container_memory 1024 \
   -container_vcores 1 \
-  -num_containers 1 \
+  -num_containers 3 \
   -memory_overhead 512 \
   -queue default \
   -java_opts "-XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:+PrintGCDateStamps -XX:+UseConcMarkSweepGC" \ 
   -shell_args "abc 123"
+
 ```
 
 确认程序运行中。
