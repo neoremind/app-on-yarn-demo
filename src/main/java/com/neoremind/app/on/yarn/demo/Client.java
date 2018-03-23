@@ -201,6 +201,8 @@ public class Client {
 
     Client(String appMasterMainClass, Configuration conf) {
         this.conf = conf;
+        // set am retry to a lot of times
+        conf.set("yarn.resourcemanager.am.max-attempts", "99");
         this.appMasterMainClass = appMasterMainClass;
         yarnClient = YarnClient.createYarnClient();
         yarnClient.init(conf);
