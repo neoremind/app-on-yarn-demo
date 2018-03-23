@@ -1,4 +1,4 @@
-# Application hosted on YARN demo
+# Service oriented application hosted on YARN demo
 
 ## 1. 介绍
 [Apache Hadoop Yarn](http://hadoop.apache.org/)是big data领域通用的资源管理与调度平台，很多计算框架均可以跑在Yarn上，例如Mapreduce、Spark、Flink、Storm等，这些计算框架可以专注于计算本身，Yarn提供的高度抽象的接口来做集成。
