@@ -40,6 +40,7 @@ public abstract class BaseHttpServer implements Closeable {
                 context.addServlet(new ServletHolder(getIndexPageServlet(name)), "/");
                 context.addServlet(StackServlet.class, "/stack");
                 server.setHandler(context);
+                server.getConnectors()[0].setHost(NetworkUtils.getLocalHostIP());
                 server.start();
                 LOG.info("Embedded Jetty has successfully started on port " + port);
                 break;
