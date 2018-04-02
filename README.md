@@ -12,6 +12,7 @@
 
 ![https://github.com/neoremind/mydoc/blob/master/image/yarn_service.png](https://github.com/neoremind/mydoc/blob/master/image/yarn_service.png)
 
+另外，[Twill](http://twill.apache.org/)是一个基于Yarn抽象出来的编程模型组件，基于其API可以很方便的开发托管Yarn的分布式程序。本项目的程序可以看做是教学和简单版本的Twill，并不是一个成熟的开源组件。
 
 ## 2. 搭建Hadoop环境
 必备环境包括HDFS、YARN。
